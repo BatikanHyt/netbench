@@ -1,0 +1,147 @@
+package protocols
+
+import (
+	"bytes"
+	"context"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"net/url"
+	"strings"
+	"time"
+
+	"github.com/BatikanHyt/netbench/pkg/collector"
+	"golang.org/x/net/http2"
+)
+
+type httpClient struct {
+	Client     *http.Client
+	Req        *http.Request
+	ReportChan chan *collector.HttpEntry
+	readSize   int64
+	writeSize  int64
+	Url        string `json:"url"`
+	Method     string `json:"method"`
+	Version    string `json:"version"`
+	Body       struct {
+		Raw  string `json:"raw"`
+		File string `json:"file"`
+	} `json:"body"`
+	Proxy       string            `json:"proxy"`
+	Headers     map[string]string `json:"headers"`
+	Keep_alive  bool              `json:"keep-alive"`
+	Compression bool              `json:"compression"`
+	Redirect    bool              `json:"redirect"`
+	initialized bool
+	Auth        struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	} `json:"auth"`
+}
+
+func NewHttpClient() *httpClient {
+	client := &httpClient{
+		Method:      "GET",
+		Version:     "1.1",
+		initialized: false,
+	}
+	return client
+}
+
+func (c *httpClient) Initialize(clc *collector.StatBase) {
+	hclc, _ := (*clc).(*collector.HttpStatCollector)
+	c.ReportChan = hclc.StatChannel
+	tr := &http.Transport{
+		DisableKeepAlives:  !c.Keep_alive,
+		DisableCompression: !c.Compression,
+		DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
+			return DialContextWithBytesTracked(ctx, network, address, &c.readSize, &c.writeSize)
+		},
+	}
+
+	if c.Version == "2" {
+		http2.ConfigureTransport(tr)
+	}
+
+	if c.Proxy != "" {
+		proxyUrl, err := url.Parse(c.Proxy)
+		if err == nil {
+			fmt.Printf("Unable to set proxy %s", c.Proxy)
+			return
+		}
+		tr.Proxy = http.ProxyURL(proxyUrl)
+	}
+
+	c.Client = &http.Client{Transport: tr}
+
+	//Disable Redirect
+	if !c.Redirect {
+		c.Client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		}
+	}
+
+	req, err := c.createRequest()
+	if err != nil {
+		return
+	}
+
+	if c.Auth.Username != "" && c.Auth.Password != "" {
+		req.SetBasicAuth(c.Auth.Username, c.Auth.Password)
+	}
+	c.Req = req
+	for key, value := range c.Headers {
+		if strings.EqualFold(key, "host") {
+			req.Host = value
+		} else {
+			req.Header.Set(key, value)
+		}
+	}
+	fmt.Printf("Running HTTP bench for url %s\n", c.Url)
+	c.initialized = true
+}
+
+func (c *httpClient) StartBenchmark() {
+	if !c.initialized {
+		fmt.Println("HTTP not initialized correctly!")
+		return
+	}
+
+	c.makeRequest()
+}
+
+func (c *httpClient) makeRequest() {
+	start := time.Now()
+	resp, err := c.Client.Do(c.Req)
+	if err != nil {
+		fmt.Printf("Error %s", err.Error())
+		return
+	}
+	defer resp.Body.Close()
+	_, bErr := io.Copy(io.Discard, resp.Body)
+	if bErr != nil {
+		return
+	}
+	elapsed := time.Since(start)
+	stat := &collector.HttpEntry{
+		ResponseCode: resp.StatusCode,
+		WriteSize:    c.writeSize,
+		ReadSize:     c.readSize,
+		Duration:     elapsed,
+	}
+	c.ReportChan <- stat
+}
+
+func (c *httpClient) createRequest() (*http.Request, error) {
+	var req *http.Request
+	var err error
+	if c.Body.Raw != "" {
+		req, err = http.NewRequest(c.Method, c.Url, bytes.NewBuffer([]byte(c.Body.Raw)))
+
+	} else {
+		req, err = http.NewRequest(c.Method, c.Url, bytes.NewBuffer([]byte(c.Body.File)))
+	}
+
+	return req, err
+}

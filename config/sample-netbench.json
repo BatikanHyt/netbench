@@ -1,0 +1,14 @@
+{
+    "concurency" : 1,
+    "totalRequest" : 2,
+    "output" : "sample",
+    "http":{
+        "url":"http://example.com",
+        "body:":"body-test",
+        "headers":{
+            "h1":"k1",
+            "h2":"k2",
+            "h3":"k3"
+        }
+    }
+}
