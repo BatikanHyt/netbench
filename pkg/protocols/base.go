@@ -31,8 +31,10 @@ type Runner struct {
 	StatCollector collector.StatBase
 }
 
-var wg sync.WaitGroup
-var cwg sync.WaitGroup
+const (
+	progressTimeThreshold     = time.Minute * 10
+	progressRequestThreshhold = 100
+)
 
 func (r *Runner) Run() {
 	if r.Protocol == nil {
@@ -41,16 +43,25 @@ func (r *Runner) Run() {
 	if r.StatCollector == nil {
 		return
 	}
+	var wg sync.WaitGroup
+	var cwg sync.WaitGroup
 	r.Protocol.Initialize(&r.StatCollector)
 	pool := make(chan struct{}, r.Concurency)
 	cwg.Add(1)
 	go r.StatCollector.Consume(&cwg)
 	if r.Duration != "0s" {
-		duraiton, _ := time.ParseDuration(r.Duration)
-		timeout := time.After(duraiton)
+		duration, _ := time.ParseDuration(r.Duration)
+		timeout := time.After(duration)
+		dur2 := progressTimeThreshold
+		var progress_stats <-chan time.Time
+		if duration > dur2 {
+			progress_stats = time.After(duration / 10)
+		}
 	loop:
 		for {
 			select {
+			case <-progress_stats:
+				r.StatCollector.PrintProgressStats()
 			case <-timeout:
 				// timeout has been hit, break out of the loop
 				break loop
@@ -69,12 +80,22 @@ func (r *Runner) Run() {
 		}
 	} else {
 		wg.Add(r.TotalRequest)
+		current_progress := 0
+		printProgress := false
+		if r.TotalRequest > progressRequestThreshhold {
+			printProgress = true
+		}
 		for i := 0; i < r.TotalRequest; i++ {
 			// acquire a token from the pool
 			pool <- struct{}{}
 			go func() {
 				defer func() {
 					// release the token
+					current_progress++
+					if printProgress && current_progress >= r.TotalRequest/10 {
+						current_progress = 0
+						r.StatCollector.PrintProgressStats()
+					}
 					<-pool
 					wg.Done()
 				}()
@@ -90,10 +111,11 @@ func (r *Runner) Run() {
 
 func (r *Runner) printFinalResult() {
 	globalStats := r.StatCollector.GetGlobalStats()
+	req_per_sec := float64(globalStats.TotalRequest) / globalStats.TotalDuration.Seconds()
 	fmt.Printf("\nTotal Request: %d, Total Duration: %s, Total recv/send bytes: %d\n"+
-		"Succesfull requests: %d, Failed Requests %d Avg Reqs/sec:%d\n Throughput: %f Mbit\\s\n",
+		"Succesfull requests: %d, Failed Requests %d Avg Response time:%s \nReq/sec:%f\nThroughput: %f MB/s\n",
 		globalStats.TotalRequest, globalStats.TotalDuration, globalStats.TotalSize,
-		globalStats.SuccessfulReq, globalStats.FailedReq, globalStats.AverageDuration, globalStats.Throughput)
+		globalStats.SuccessfulReq, globalStats.FailedReq, globalStats.AverageDuration, req_per_sec, globalStats.Throughput)
 
 }
 

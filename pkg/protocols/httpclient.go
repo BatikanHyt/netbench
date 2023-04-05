@@ -115,7 +115,15 @@ func (c *httpClient) makeRequest() {
 	start := time.Now()
 	resp, err := c.Client.Do(c.Req)
 	if err != nil {
-		fmt.Printf("Error %s", err.Error())
+		fmt.Printf("Error %s\n", err.Error())
+		elapsed := time.Since(start)
+		stat := &collector.HttpEntry{
+			ResponseCode: 1000,
+			WriteSize:    c.writeSize,
+			ReadSize:     c.readSize,
+			Duration:     elapsed,
+		}
+		c.ReportChan <- stat
 		return
 	}
 	defer resp.Body.Close()
