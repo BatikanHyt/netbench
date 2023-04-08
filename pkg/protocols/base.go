@@ -90,12 +90,12 @@ func (r *Runner) Run() {
 			pool <- struct{}{}
 			go func() {
 				defer func() {
-					// release the token
-					current_progress++
 					if printProgress && current_progress >= r.TotalRequest/10 {
 						current_progress = 0
 						r.StatCollector.PrintProgressStats()
 					}
+					current_progress++
+					// release the token
 					<-pool
 					wg.Done()
 				}()
@@ -149,7 +149,7 @@ func (r *Runner) UnmarshalJSON(data []byte) error {
 				return err
 			}
 			r.Protocol = protocolValue
-			stat_funct, _ := statMap[key]
+			stat_funct := statMap[key]
 			r.StatCollector = stat_funct()
 		}
 	}

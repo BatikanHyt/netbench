@@ -1,10 +1,10 @@
 {
     "concurency" : 1,
-    "totalRequest" : 2,
+    "totalRequest" : 1,
     "output" : "sample",
     "http":{
-        "url":"http://example.com",
-        "body:":"body-test",
+        "url":"http://127.0.0.1:8989",
+        "body":"body-test",
         "headers":{
             "h1":"k1",
             "h2":"k2",

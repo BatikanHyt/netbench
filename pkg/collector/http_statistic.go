@@ -70,7 +70,8 @@ loop:
 	}
 	end := time.Since(start)
 	h.GlobalStat.TotalDuration = end
-	h.GlobalStat.Throughput = float64(h.GlobalStat.TotalSize) / (1 << 20) //For MB
+	size_in_mb := float64(h.GlobalStat.TotalSize) / (1 << 20) //For MB
+	h.GlobalStat.Throughput = size_in_mb / h.GlobalStat.TotalDuration.Seconds()
 	avg_time = time.Duration(int64(avg_time) / count)
 	h.GlobalStat.AverageDuration = avg_time
 

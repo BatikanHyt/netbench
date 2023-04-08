@@ -16,18 +16,16 @@ import (
 )
 
 type httpClient struct {
-	Client     *http.Client
-	Req        *http.Request
-	ReportChan chan *collector.HttpEntry
-	readSize   int64
-	writeSize  int64
-	Url        string `json:"url"`
-	Method     string `json:"method"`
-	Version    string `json:"version"`
-	Body       struct {
-		Raw  string `json:"raw"`
-		File string `json:"file"`
-	} `json:"body"`
+	Client      *http.Client
+	Req         *http.Request
+	ReportChan  chan *collector.HttpEntry
+	readSize    int64
+	writeSize   int64
+	Url         string            `json:"url"`
+	Method      string            `json:"method"`
+	Version     string            `json:"version"`
+	Body        string            `json:"body"`
+	BodyFile    string            `json:"body_file"`
 	Proxy       string            `json:"proxy"`
 	Headers     map[string]string `json:"headers"`
 	Keep_alive  bool              `json:"keep-alive"`
@@ -73,7 +71,7 @@ func (c *httpClient) Initialize(clc *collector.StatBase) {
 		tr.Proxy = http.ProxyURL(proxyUrl)
 	}
 
-	c.Client = &http.Client{Transport: tr}
+	c.Client = &http.Client{Transport: tr, Timeout: time.Second * 5}
 
 	//Disable Redirect
 	if !c.Redirect {
@@ -144,11 +142,11 @@ func (c *httpClient) makeRequest() {
 func (c *httpClient) createRequest() (*http.Request, error) {
 	var req *http.Request
 	var err error
-	if c.Body.Raw != "" {
-		req, err = http.NewRequest(c.Method, c.Url, bytes.NewBuffer([]byte(c.Body.Raw)))
+	if c.BodyFile != "" {
+		req, err = http.NewRequest(c.Method, c.Url, bytes.NewBuffer([]byte(c.BodyFile)))
 
 	} else {
-		req, err = http.NewRequest(c.Method, c.Url, bytes.NewBuffer([]byte(c.Body.File)))
+		req, err = http.NewRequest(c.Method, c.Url, bytes.NewBuffer([]byte(c.Body)))
 	}
 
 	return req, err
