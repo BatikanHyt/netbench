@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -81,23 +82,6 @@ func (c *httpClient) Initialize(clc *collector.StatBase) {
 			return http.ErrUseLastResponse
 		}
 	}
-
-	req, err := c.createRequest()
-	if err != nil {
-		return
-	}
-
-	if c.Auth.Username != "" && c.Auth.Password != "" {
-		req.SetBasicAuth(c.Auth.Username, c.Auth.Password)
-	}
-	c.Req = req
-	for key, value := range c.Headers {
-		if strings.EqualFold(key, "host") {
-			req.Host = value
-		} else {
-			req.Header.Set(key, value)
-		}
-	}
 	fmt.Printf("Running HTTP bench for url %s\n", c.Url)
 	c.initialized = true
 }
@@ -113,7 +97,12 @@ func (c *httpClient) StartBenchmark() {
 
 func (c *httpClient) makeRequest() {
 	start := time.Now()
-	resp, err := c.Client.Do(c.Req)
+	req, rErr := c.createRequest()
+	if rErr != nil {
+		fmt.Printf("Error %s\n", rErr.Error())
+		return
+	}
+	resp, err := c.Client.Do(req)
 	if err != nil {
 		fmt.Printf("Error %s\n", err.Error())
 		elapsed := time.Since(start)
@@ -142,14 +131,33 @@ func (c *httpClient) makeRequest() {
 }
 
 func (c *httpClient) createRequest() (*http.Request, error) {
-	var req *http.Request
+	var dataReader io.Reader
 	var err error
+	var req *http.Request
+
 	if c.BodyFile != "" {
-		req, err = http.NewRequest(c.Method, c.Url, bytes.NewBuffer([]byte(c.BodyFile)))
-
+		var content []byte
+		content, err = os.ReadFile(c.BodyFile)
+		if err != nil {
+			return nil, err
+		}
+		dataReader = bytes.NewReader(content)
 	} else {
-		req, err = http.NewRequest(c.Method, c.Url, bytes.NewBuffer([]byte(c.Body)))
+		dataReader = strings.NewReader(c.Body)
 	}
-
+	req, err = http.NewRequest(c.Method, c.Url, io.NopCloser(dataReader))
+	if err != nil {
+		return req, err
+	}
+	if c.Auth.Username != "" && c.Auth.Password != "" {
+		req.SetBasicAuth(c.Auth.Username, c.Auth.Password)
+	}
+	for key, value := range c.Headers {
+		if strings.EqualFold(key, "host") {
+			req.Host = value
+		} else {
+			req.Header.Set(key, value)
+		}
+	}
 	return req, err
 }
