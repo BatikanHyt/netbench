@@ -24,8 +24,12 @@ func (h *HttpStatCollector) GetGlobalStats() *GlobalStatistic {
 	return &h.GlobalStat
 }
 
+var lock = sync.RWMutex{}
+
 // prints stats on every +10% process
 func (h *HttpStatCollector) PrintProgressStats() {
+	lock.RLock()
+	defer lock.RUnlock()
 	fmt.Printf("HTTP Codes:\n 1xx:%d 2xx:%d, 3xx:%d, 4xx:%d, 5xx:%d, other:%d\nCurrent Total Request: %d, Current Total Time: %s, Avg Duration %s\n",
 		h.ResponseStatus["1xx"], h.ResponseStatus["2xx"], h.ResponseStatus["3xx"], h.ResponseStatus["4xx"], h.ResponseStatus["5xx"], h.ResponseStatus["other"],
 		h.GlobalStat.TotalRequest, h.GlobalStat.TotalDuration, h.GlobalStat.AverageDuration)
@@ -45,6 +49,7 @@ loop:
 			}
 			count++
 			h.GlobalStat.TotalRequest++
+			lock.Lock()
 			if httpEntry.ResponseCode < 200 {
 				h.ResponseStatus["1xx"]++
 				h.GlobalStat.SuccessfulReq++
@@ -64,12 +69,14 @@ loop:
 				h.ResponseStatus["other"]++
 				h.GlobalStat.FailedReq++
 			}
+			lock.Unlock()
+			end := time.Since(start)
 			avg_time += httpEntry.Duration
+			h.GlobalStat.TotalDuration = end
+			h.GlobalStat.AverageDuration = time.Duration(int64(avg_time) / count)
 			h.GlobalStat.TotalSize = httpEntry.ReadSize + httpEntry.WriteSize
 		}
 	}
-	end := time.Since(start)
-	h.GlobalStat.TotalDuration = end
 	size_in_mb := float64(h.GlobalStat.TotalSize) / (1 << 20) //For MB
 	h.GlobalStat.Throughput = size_in_mb / h.GlobalStat.TotalDuration.Seconds()
 	avg_time = time.Duration(int64(avg_time) / count)
