@@ -28,6 +28,7 @@ type httpClient struct {
 	BodyFile    string            `json:"body_file"`
 	Proxy       string            `json:"proxy"`
 	Headers     map[string]string `json:"headers"`
+	Timeout     time.Duration     `json:"Timeout"`
 	Keep_alive  bool              `json:"keep-alive"`
 	Compression bool              `json:"compression"`
 	Redirect    bool              `json:"redirect"`
@@ -70,8 +71,9 @@ func (c *httpClient) Initialize(clc *collector.StatBase) {
 		}
 		tr.Proxy = http.ProxyURL(proxyUrl)
 	}
-
-	c.Client = &http.Client{Transport: tr, Timeout: time.Second * 5}
+	c.Client = &http.Client{
+		Transport: tr,
+		Timeout:   time.Second * c.Timeout}
 
 	//Disable Redirect
 	if !c.Redirect {

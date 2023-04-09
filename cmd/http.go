@@ -28,6 +28,7 @@ func init() {
 	httpCmd.Flags().StringVarP(&client.Version, "Version", "v", "1", "HTTP version 1 or 2")
 	httpCmd.Flags().StringVarP(&client.Body, "body", "b", "", "HTTP body to send")
 	httpCmd.Flags().StringVarP(&client.BodyFile, "body_file", "f", "", "File to send as http body")
+	httpCmd.Flags().DurationVarP(&client.Timeout, "time_out", "t", 1, "Request timeout in seconds")
 	httpCmd.Flags().BoolVar(&client.Keep_alive, "keep_alive", true, "Toggle keep-alive, --keep_alive=[true|false]")
 	httpCmd.Flags().BoolVar(&client.Compression, "compression", false, "Toggle compression --compression=[true|false]")
 	httpCmd.Flags().BoolVar(&client.Redirect, "redirect", false, "Toggle redirect --redirect=[true|false]")

@@ -5,6 +5,7 @@
     "http":{
         "url":"http://127.0.0.1:8989",
         "body":"body-test",
+        "timeout" : 10,
         "headers":{
             "h1":"k1",
             "h2":"k2",
