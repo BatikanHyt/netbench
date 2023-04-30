@@ -14,6 +14,13 @@ type HttpEntry struct {
 	Duration     time.Duration
 }
 
+type SmtpEntry struct {
+	ResponseCode int
+	WriteSize    int64
+	ReadSize     int64
+	Duration     time.Duration
+}
+
 type GlobalStatistic struct {
 	TotalRequest    int
 	TotalDuration   time.Duration

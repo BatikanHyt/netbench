@@ -16,7 +16,7 @@ var protocolMap = map[string]func() BaseProtocol{
 
 var statMap = map[string]func() collector.StatBase{
 	"http": func() collector.StatBase { return collector.CreateHttpStatCollector() },
-	"smtp": func() collector.StatBase { return collector.CreateHttpStatCollector() },
+	"smtp": func() collector.StatBase { return collector.CreateSmtpStatCollector() },
 }
 
 type BaseProtocol interface {

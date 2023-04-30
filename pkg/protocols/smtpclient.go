@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/smtp"
+	"net/textproto"
 	"path/filepath"
 	"strings"
 	"time"
@@ -37,6 +38,7 @@ type smtpClient struct {
 	BodyHtml    string            `json:"body_html"`
 	Attachments []string          `json:"attachments"`
 	Timeout     time.Duration     `json:"Timeout"`
+	ReportChan  chan *collector.SmtpEntry
 	initialized bool
 	readSize    int64
 	writeSize   int64
@@ -96,6 +98,8 @@ func writeAttachmentPart(writer *bytes.Buffer, attachments []string, boundary *s
 }
 
 func (c *smtpClient) Initialize(clc *collector.StatBase) {
+	sclc, _ := (*clc).(*collector.SmtpStatCollector)
+	c.ReportChan = sclc.StatChannel
 	data := &bytes.Buffer{}
 
 	data.WriteString(fmt.Sprintf("From: %s\n", c.From))
@@ -146,36 +150,55 @@ func (c *smtpClient) Initialize(clc *collector.StatBase) {
 	c.data = data.Bytes()
 	c.initialized = true
 }
+
+func getSmtpErrorCode(err error) int {
+	if e, ok := err.(*textproto.Error); ok {
+		return e.Code
+	}
+	return 1000
+}
+
+func (c *smtpClient) sendStat(code int, dur time.Duration) {
+	stat := &collector.SmtpEntry{
+		ResponseCode: code,
+		WriteSize:    c.writeSize,
+		ReadSize:     c.readSize,
+		Duration:     dur,
+	}
+	c.ReportChan <- stat
+}
+
 func (c *smtpClient) StartBenchmark() {
 	if !c.initialized {
 		fmt.Println("SMTP not initialized correctly!")
 		return
 	}
+	start := time.Now()
+	code := 250
 	conn, err := c.initializeConnection()
 	if err != nil {
+		code = getSmtpErrorCode(err)
+		elapsed := time.Since(start)
+		c.sendStat(code, elapsed)
 		fmt.Printf("Error initializing the connection")
 		return
 	}
 	cc, err := conn.Data()
 	if err != nil {
+		code = getSmtpErrorCode(err)
+		elapsed := time.Since(start)
+		c.sendStat(code, elapsed)
 		fmt.Printf("Error data %s\n", err)
+		return
 	}
 	cc.Write(c.data)
 	cc.Close()
-	//err = cc.Close()
-	//if err != nil {
-	//	fmt.Printf("Error close cc %s\n", err)
-	//}
-	//err = c.Connection.Close()
-	//if err != nil {
-	//	fmt.Printf("Error close %s\n", err)
-	//}
-
-	//err = conn.Quit()
-	//if err != nil {
-	//	fmt.Printf("Error quit %s\n", err)
-	//}
-	fmt.Printf("Total read %d write %d\n", c.readSize, c.writeSize)
+	err = conn.Quit()
+	if err != nil {
+		code = getSmtpErrorCode(err)
+	}
+	elapsed := time.Since(start)
+	c.sendStat(code, elapsed)
 }
 
 func (c *smtpClient) initializeConnection() (*smtp.Client, error) {
