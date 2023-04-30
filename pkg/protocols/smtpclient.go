@@ -5,13 +5,16 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"mime/multipart"
 	"net"
 	"net/http"
+	"net/mail"
 	"net/smtp"
 	"net/textproto"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -27,6 +30,7 @@ type smtpClient struct {
 		Password string `json:"password"`
 		Method   string `json:"method"`
 	} `json:"auth"`
+	EmlFile     string            `json:"eml"`
 	From        string            `json:"from"`
 	To          []string          `json:"to"`
 	CC          []string          `json:"cc"`
@@ -100,7 +104,67 @@ func writeAttachmentPart(writer *bytes.Buffer, attachments []string, boundary *s
 func (c *smtpClient) Initialize(clc *collector.StatBase) {
 	sclc, _ := (*clc).(*collector.SmtpStatCollector)
 	c.ReportChan = sclc.StatChannel
+	var err error
+	if c.EmlFile != "" {
+		c.data, err = c.createMailFromEml()
+	} else {
+		c.data, err = c.createMailFromConf()
+	}
+	if err != nil {
+		fmt.Printf("Error: %s\n", err)
+		os.Exit(1)
+	}
+	c.initialized = true
+}
+
+func (c *smtpClient) createMailFromEml() ([]byte, error) {
+	emlfile, err := ioutil.ReadFile(c.EmlFile)
+	if err != nil {
+		return nil, err
+	}
+	r := bytes.NewReader(emlfile)
+	mail, err := mail.ReadMessage(r)
+	if err != nil {
+		return nil, err
+	}
+	from, err := mail.Header.AddressList("From")
+	if err != nil {
+		return nil, err
+	}
+	to, err := mail.Header.AddressList("To")
+	if err != nil {
+		return nil, err
+	}
+	c.Subject = mail.Header.Get("Subject")
+	if c.Subject == "" {
+		return nil, errors.New("EML file does not contain Subject field")
+	}
+	cc, err := mail.Header.AddressList("Cc")
+	if err == nil {
+		for _, addr := range cc {
+			c.CC = append(c.CC, addr.Address)
+		}
+	}
+	bcc, err := mail.Header.AddressList("Bcc")
+	if err == nil {
+		for _, addr := range bcc {
+			c.BCC = append(c.BCC, addr.Address)
+		}
+	}
+	for _, addr := range to {
+		c.To = append(c.To, addr.Address)
+	}
+	c.From = from[0].Address
+
+	return emlfile, nil
+}
+
+func (c *smtpClient) createMailFromConf() ([]byte, error) {
 	data := &bytes.Buffer{}
+
+	if c.From == "" || len(c.To) == 0 || c.Subject == "" {
+		return nil, errors.New("STMP requires From, To and Subject to be non empty")
+	}
 
 	data.WriteString(fmt.Sprintf("From: %s\n", c.From))
 	data.WriteString(fmt.Sprintf("To: %s\n", strings.Join(c.To, ",")))
@@ -147,8 +211,7 @@ func (c *smtpClient) Initialize(clc *collector.StatBase) {
 		}
 	}
 	writeAttachmentPart(data, c.Attachments, &boundary)
-	c.data = data.Bytes()
-	c.initialized = true
+	return data.Bytes(), nil
 }
 
 func getSmtpErrorCode(err error) int {
@@ -193,10 +256,12 @@ func (c *smtpClient) StartBenchmark() {
 	}
 	cc.Write(c.data)
 	cc.Close()
+
 	err = conn.Quit()
 	if err != nil {
 		code = getSmtpErrorCode(err)
 	}
+
 	elapsed := time.Since(start)
 	c.sendStat(code, elapsed)
 }
