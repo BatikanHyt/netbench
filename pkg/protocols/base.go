@@ -11,10 +11,12 @@ import (
 
 var protocolMap = map[string]func() BaseProtocol{
 	"http": func() BaseProtocol { return NewHttpClient() },
+	"smtp": func() BaseProtocol { return NewSmtpClient() },
 }
 
 var statMap = map[string]func() collector.StatBase{
 	"http": func() collector.StatBase { return collector.CreateHttpStatCollector() },
+	"smtp": func() collector.StatBase { return collector.CreateHttpStatCollector() },
 }
 
 type BaseProtocol interface {
