@@ -192,6 +192,7 @@ func (c *smtpClient) createMailFromConf() ([]byte, error) {
 			data.WriteString(fmt.Sprintf("Content-Type: multipart/alternative; boundary=%s\n\n", boundary))
 		}
 	}
+	data.WriteString("\n")
 	if c.BodyFile != "" {
 		content, err := ioutil.ReadFile(c.BodyFile)
 		if err != nil {
